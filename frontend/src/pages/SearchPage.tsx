@@ -86,7 +86,7 @@ const SearchPage: React.FC = () => {
             <button
               key={m}
               onClick={() => setMode(m)}
-              className={`px-4 py-2 rounded-lg capitalize transition-colors \${
+              className={`px-4 py-2 rounded-lg capitalize transition-colors ${
                 mode === m
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -189,7 +189,7 @@ const SearchPage: React.FC = () => {
                           <FileText className="w-5 h-5 text-blue-500" />
                         )}
                         <span className="font-medium text-gray-800">{result.text}</span>
-                        <span className={`px-2 py-1 rounded text-xs capitalize \${
+                        <span className={`px-2 py-1 rounded text-xs capitalize ${
                           result.type === 'topic' 
                             ? 'bg-orange-100 text-orange-700' 
                             : 'bg-blue-100 text-blue-700'

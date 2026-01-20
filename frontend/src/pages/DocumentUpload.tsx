@@ -94,7 +94,7 @@ const DocumentUpload: React.FC = () => {
 
       {/* Upload Area */}
       <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors \${
+        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
           dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
         }`}
         onDragEnter={handleDrag}
@@ -147,7 +147,7 @@ const DocumentUpload: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   {statusIcons[doc.status]}
-                  <span className={`text-sm \${
+                  <span className={`text-sm ${
                     doc.status === 'completed' ? 'text-green-600' :
                     doc.status === 'failed' ? 'text-red-600' : 'text-gray-600'
                   }`}>
