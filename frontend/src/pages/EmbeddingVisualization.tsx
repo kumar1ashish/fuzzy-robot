@@ -297,9 +297,9 @@ const EmbeddingVisualization: React.FC = () => {
           <span className="text-sm text-gray-600">Filter by type:</span>
           <button
             onClick={() => setTypeFilter(null)}
-            className={\`px-3 py-1 rounded text-sm \${
+            className={`px-3 py-1 rounded text-sm \${
               typeFilter === null ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-            }\`}
+            }`}
           >
             All
           </button>
@@ -307,9 +307,9 @@ const EmbeddingVisualization: React.FC = () => {
             <button
               key={type}
               onClick={() => setTypeFilter(type)}
-              className={\`px-3 py-1 rounded text-sm capitalize \${
+              className={`px-3 py-1 rounded text-sm capitalize \${
                 typeFilter === type ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-              }\`}
+              }`}
             >
               {type}
             </button>

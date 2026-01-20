@@ -24,7 +24,7 @@ export const getDocuments = async (): Promise<DocumentInfo[]> => {
 };
 
 export const getDocumentProgress = async (docId: string) => {
-  const response = await api.get(\`/documents/\${docId}/progress\`);
+  const response = await api.get(`/documents/\${docId}/progress`);
   return response.data;
 };
 

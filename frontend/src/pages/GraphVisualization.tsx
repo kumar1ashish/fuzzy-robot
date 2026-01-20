@@ -145,7 +145,7 @@ const GraphVisualization: React.FC = () => {
         .attr('x', d => ((d.source as Node).x! + (d.target as Node).x!) / 2)
         .attr('y', d => ((d.source as Node).y! + (d.target as Node).y!) / 2);
 
-      node.attr('transform', d => \`translate(\${d.x},\${d.y})\`);
+      node.attr('transform', d => `translate(\${d.x},\${d.y})`);
     });
 
     return () => {

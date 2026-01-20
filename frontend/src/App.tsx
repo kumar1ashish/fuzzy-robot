@@ -14,11 +14,11 @@ const NavLink: React.FC<{ to: string; icon: React.ReactNode; label: string }> = 
   return (
     <Link
       to={to}
-      className={\`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors \${
-        isActive 
-          ? 'bg-blue-600 text-white' 
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+        isActive
+          ? 'bg-blue-600 text-white'
           : 'text-gray-600 hover:bg-gray-100'
-      }\`}
+      }`}
     >
       {icon}
       <span>{label}</span>

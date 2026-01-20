@@ -11,7 +11,7 @@ interface StatsCardProps {
 
 const StatsCard: React.FC<StatsCardProps> = ({ icon, label, value, color }) => (
   <div className="bg-white rounded-lg shadow p-6 flex items-center gap-4">
-    <div className={\`p-3 rounded-full \${color}\`}>
+    <div className={`p-3 rounded-full \${color}`}>
       {icon}
     </div>
     <div>
