@@ -1,104 +1,13 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { RefreshCw, Search, Layers } from 'lucide-react';
-import { EmbeddingView } from 'embedding-atlas/react';
-import { getEmbeddingVisualization, projectQuery, getEmbeddingStats } from '../services/api';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { RefreshCw, Layers } from 'lucide-react';
+import { EmbeddingAtlas } from 'embedding-atlas/react';
+import { getEmbeddingVisualization, getEmbeddingStats } from '../services/api';
 import type { EmbeddingPoint } from '../types';
-
-// Iframe wrapper component for EmbeddingView
-const EmbeddingViewIframe: React.FC<{
-  data: { x: Float32Array; y: Float32Array };
-  tooltip: number | null;
-  onTooltip: (index: number | null) => void;
-  selection: number | null;
-  onSelection: (index: number | null) => void;
-}> = ({ data, tooltip, onTooltip, selection, onSelection }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-
-  useEffect(() => {
-    if (containerRef.current) {
-      const updateDimensions = () => {
-        if (containerRef.current) {
-          setDimensions({
-            width: containerRef.current.clientWidth,
-            height: 600
-          });
-        }
-      };
-      updateDimensions();
-      window.addEventListener('resize', updateDimensions);
-      return () => window.removeEventListener('resize', updateDimensions);
-    }
-  }, []);
-
-  return (
-    <div ref={containerRef} style={{ width: '100%', height: '600px' }}>
-      <iframe
-        title="Embedding Atlas Visualization"
-        style={{
-          width: '100%',
-          height: '100%',
-          border: 'none',
-          display: 'block'
-        }}
-        srcDoc={`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body { overflow: hidden; }
-                #root { width: 100vw; height: 100vh; }
-              </style>
-            </head>
-            <body>
-              <div id="root"></div>
-            </body>
-          </html>
-        `}
-        onLoad={(e) => {
-          const iframe = e.target as HTMLIFrameElement;
-          const iframeDoc = iframe.contentDocument;
-          if (iframeDoc) {
-            const root = iframeDoc.getElementById('root');
-            if (root) {
-              // Render directly in parent since iframe srcDoc doesn't support React easily
-              // Fall back to inline rendering
-            }
-          }
-        }}
-      />
-      {/* Overlay the actual EmbeddingView on top */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '600px',
-        pointerEvents: 'auto'
-      }}>
-        <EmbeddingView
-          data={data}
-          tooltip={tooltip}
-          onTooltip={onTooltip}
-          selection={selection}
-          onSelection={onSelection}
-          width={dimensions.width}
-          height={dimensions.height}
-        />
-      </div>
-    </div>
-  );
-};
 
 const EmbeddingVisualization: React.FC = () => {
   const [points, setPoints] = useState<EmbeddingPoint[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [tooltip, setTooltip] = useState<number | null>(null);
-  const [selection, setSelection] = useState<number | null>(null);
-  const [query, setQuery] = useState('');
-  const [queryProjection, setQueryProjection] = useState<{ x: number; y: number } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -122,36 +31,19 @@ const EmbeddingVisualization: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  // Convert points to Float32Arrays for embedding-atlas
-  const atlasData = useMemo(() => {
-    if (points.length === 0) {
-      return { x: new Float32Array(0), y: new Float32Array(0) };
-    }
+  // Convert points to table format for EmbeddingAtlas
+  const tableData = useMemo(() => {
+    if (points.length === 0) return [];
 
-    const x = new Float32Array(points.length);
-    const y = new Float32Array(points.length);
-
-    points.forEach((point, i) => {
-      x[i] = point.x ?? 0;
-      y[i] = point.y ?? 0;
-    });
-
-    return { x, y };
+    return points.map((point, index) => ({
+      id: point.id || `chunk_${index}`,
+      x: point.x ?? 0,
+      y: point.y ?? 0,
+      text: point.text || '',
+      doc_id: point.metadata?.doc_id || 'unknown',
+      type: point.type || 'chunk'
+    }));
   }, [points]);
-
-  const handleProjectQuery = async () => {
-    if (!query.trim()) return;
-
-    try {
-      const result = await projectQuery(query);
-      setQueryProjection({ x: result.x, y: result.y });
-    } catch (error) {
-      console.error('Failed to project query:', error);
-    }
-  };
-
-  const selectedPoint = selection !== null ? points[selection] : null;
-  const hoveredPoint = tooltip !== null ? points[tooltip] : null;
 
   if (loading) {
     return (
@@ -193,64 +85,18 @@ const EmbeddingVisualization: React.FC = () => {
         </div>
       </div>
 
-      {/* Query Projection */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Search in Embedding Space</h3>
-        <div className="flex gap-4">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleProjectQuery()}
-            placeholder="Enter a query to find similar chunks..."
-            className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            onClick={handleProjectQuery}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Search size={18} />
-            Search
-          </button>
-        </div>
-        {queryProjection && (
-          <p className="mt-2 text-sm text-gray-500">
-            Query projected to: ({queryProjection.x.toFixed(3)}, {queryProjection.y.toFixed(3)})
-          </p>
-        )}
-      </div>
-
-      {/* Embedding Atlas Visualization in iframe container */}
+      {/* Embedding Atlas Full Visualization */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="p-4 border-b bg-gray-50">
-          <h3 className="font-semibold text-gray-800">Embedding Space (Apple Embedding Atlas)</h3>
-          <p className="text-sm text-gray-500">Click on points to select, hover to preview</p>
-        </div>
-        {points.length > 0 ? (
-          <div className="relative" style={{ height: '600px', width: '100%' }}>
-            <iframe
-              title="Embedding Atlas Container"
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                background: '#fafafa'
-              }}
+        {points.length > 0 && tableData.length > 0 ? (
+          <div style={{ height: '800px', width: '100%' }}>
+            <EmbeddingAtlas
+              data={tableData}
+              x="x"
+              y="y"
+              category="doc_id"
+              text="text"
+              identifier="id"
             />
-            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-              <EmbeddingView
-                data={atlasData}
-                tooltip={tooltip}
-                onTooltip={setTooltip}
-                selection={selection}
-                onSelection={setSelection}
-                width={1000}
-                height={600}
-              />
-            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-96 text-gray-500">
@@ -263,45 +109,13 @@ const EmbeddingVisualization: React.FC = () => {
         )}
       </div>
 
-      {/* Hovered Point Info */}
-      {hoveredPoint && (
-        <div className="bg-yellow-50 rounded-lg shadow p-4 border border-yellow-200">
-          <h3 className="font-semibold text-yellow-800 flex items-center gap-2">
-            <Layers className="w-5 h-5" />
-            Hovering
-          </h3>
-          <p className="mt-2 text-sm text-yellow-900 line-clamp-3">{hoveredPoint.text}</p>
-        </div>
-      )}
-
-      {/* Selected Point Info */}
-      {selectedPoint && (
-        <div className="bg-white rounded-lg shadow p-4">
-          <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-            <Layers className="w-5 h-5" />
-            Selected Chunk
-          </h3>
-          <div className="mt-2 space-y-2">
-            <p className="text-sm">
-              <span className="text-gray-500">Position:</span> ({selectedPoint.x?.toFixed(3)}, {selectedPoint.y?.toFixed(3)})
-            </p>
-            <p className="text-sm">
-              <span className="text-gray-500">Document:</span> {selectedPoint.metadata?.doc_id || 'Unknown'}
-            </p>
-            <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-500 mb-1">Content:</p>
-              <p className="text-sm text-gray-800 whitespace-pre-wrap">{selectedPoint.text}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Info */}
       <div className="bg-blue-50 rounded-lg p-4">
         <h3 className="font-semibold text-blue-800 mb-2">About This Visualization</h3>
         <p className="text-sm text-blue-700">
-          This visualization shows extracted text chunks from your PDF documents projected into 2D space
-          using PCA. Similar chunks appear closer together. Powered by{' '}
+          This visualization shows extracted text chunks from your PDF documents projected into 2D space.
+          Similar chunks appear closer together. Color coded by document. Use the search, filter, and
+          selection tools to explore your data. Powered by{' '}
           <a
             href="https://github.com/apple/embedding-atlas"
             target="_blank"
