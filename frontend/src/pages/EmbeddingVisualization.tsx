@@ -1,31 +1,28 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { RefreshCw, Download, Search, Layers } from 'lucide-react';
-import { getEmbeddingVisualization, getAtlasConfig, projectQuery, getEmbeddingStats } from '../services/api';
-import * as d3 from 'd3';
-import type { EmbeddingPoint, EmbeddingVisualizationData } from '../types';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { RefreshCw, Search, Layers } from 'lucide-react';
+import { EmbeddingView } from 'embedding-atlas/react';
+import { getEmbeddingVisualization, projectQuery, getEmbeddingStats } from '../services/api';
+import type { EmbeddingPoint } from '../types';
 
 const EmbeddingVisualization: React.FC = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [data, setData] = useState<EmbeddingVisualizationData | null>(null);
-  const [config, setConfig] = useState<any>(null);
+  const [points, setPoints] = useState<EmbeddingPoint[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedPoint, setSelectedPoint] = useState<EmbeddingPoint | null>(null);
+  const [tooltip, setTooltip] = useState<number | null>(null);
+  const [selection, setSelection] = useState<number | null>(null);
   const [query, setQuery] = useState('');
-  const [queryPoint, setQueryPoint] = useState<{ x: number; y: number } | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
-  const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
+  const [queryProjection, setQueryProjection] = useState<{ x: number; y: number } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [vizData, configData, statsData] = await Promise.all([
-        getEmbeddingVisualization(1000),
-        getAtlasConfig(),
+      const [vizData, statsData] = await Promise.all([
+        getEmbeddingVisualization(2000),
         getEmbeddingStats()
       ]);
-      setData(vizData);
-      setConfig(configData);
+      // Filter to only show chunks
+      const chunkPoints = vizData.points.filter((p: EmbeddingPoint) => p.type === 'chunk');
+      setPoints(chunkPoints);
       setStats(statsData);
     } catch (error) {
       console.error('Failed to fetch embedding data:', error);
@@ -38,186 +35,36 @@ const EmbeddingVisualization: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  // Canvas rendering
-  useEffect(() => {
-    if (!data || !canvasRef.current || !config) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const width = canvas.width;
-    const height = canvas.height;
-    const padding = 50;
-
-    // Clear canvas
-    ctx.fillStyle = '#f9fafb';
-    ctx.fillRect(0, 0, width, height);
-
-    // Filter points
-    let points = data.points;
-    if (typeFilter) {
-      points = points.filter(p => p.type === typeFilter);
+  // Convert points to Float32Arrays for embedding-atlas
+  const atlasData = useMemo(() => {
+    if (points.length === 0) {
+      return { x: new Float32Array(0), y: new Float32Array(0) };
     }
 
-    if (points.length === 0) return;
+    const x = new Float32Array(points.length);
+    const y = new Float32Array(points.length);
 
-    // Calculate scales
-    const xExtent = d3.extent(points, d => d.x) as [number, number];
-    const yExtent = d3.extent(points, d => d.y) as [number, number];
-
-    const xScale = d3.scaleLinear()
-      .domain(xExtent)
-      .range([padding, width - padding]);
-
-    const yScale = d3.scaleLinear()
-      .domain(yExtent)
-      .range([height - padding, padding]);
-
-    // Apply transform
-    ctx.save();
-    ctx.translate(transform.x, transform.y);
-    ctx.scale(transform.k, transform.k);
-
-    // Draw points
-    points.forEach(point => {
-      if (point.x === undefined || point.y === undefined) return;
-
-      const x = xScale(point.x);
-      const y = yScale(point.y);
-      const color = config.colors[point.type] || '#666';
-      const radius = config.settings.point_size || 5;
-
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, 2 * Math.PI);
-      ctx.fillStyle = color;
-      ctx.globalAlpha = config.settings.opacity || 0.8;
-      ctx.fill();
-
-      // Highlight selected point
-      if (selectedPoint && selectedPoint.id === point.id) {
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
+    points.forEach((point, i) => {
+      x[i] = point.x ?? 0;
+      y[i] = point.y ?? 0;
     });
 
-    // Draw query point if exists
-    if (queryPoint) {
-      const qx = xScale(queryPoint.x);
-      const qy = yScale(queryPoint.y);
-
-      ctx.beginPath();
-      ctx.arc(qx, qy, 10, 0, 2 * Math.PI);
-      ctx.fillStyle = '#F44336';
-      ctx.globalAlpha = 1;
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Draw label
-      ctx.fillStyle = '#F44336';
-      ctx.font = '12px sans-serif';
-      ctx.fillText('Query', qx + 15, qy + 4);
-    }
-
-    ctx.restore();
-
-    // Draw legend
-    const types = Object.keys(config.colors);
-    ctx.globalAlpha = 1;
-    types.forEach((type, i) => {
-      const x = 20;
-      const y = 30 + i * 25;
-
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, 2 * Math.PI);
-      ctx.fillStyle = config.colors[type];
-      ctx.fill();
-
-      ctx.fillStyle = '#333';
-      ctx.font = '12px sans-serif';
-      ctx.fillText(type, x + 15, y + 4);
-    });
-
-  }, [data, config, selectedPoint, queryPoint, typeFilter, transform]);
-
-  // Handle canvas click
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!data || !canvasRef.current || !config) return;
-
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const width = canvas.width;
-    const height = canvas.height;
-    const padding = 50;
-
-    let points = data.points;
-    if (typeFilter) {
-      points = points.filter(p => p.type === typeFilter);
-    }
-
-    const xExtent = d3.extent(points, d => d.x) as [number, number];
-    const yExtent = d3.extent(points, d => d.y) as [number, number];
-
-    const xScale = d3.scaleLinear()
-      .domain(xExtent)
-      .range([padding, width - padding]);
-
-    const yScale = d3.scaleLinear()
-      .domain(yExtent)
-      .range([height - padding, padding]);
-
-    // Find nearest point
-    let nearest: EmbeddingPoint | null = null;
-    let minDist = Infinity;
-
-    points.forEach(point => {
-      if (point.x === undefined || point.y === undefined) return;
-
-      const px = xScale(point.x);
-      const py = yScale(point.y);
-      const dist = Math.sqrt((x - px) ** 2 + (y - py) ** 2);
-
-      if (dist < minDist && dist < 20) {
-        minDist = dist;
-        nearest = point;
-      }
-    });
-
-    setSelectedPoint(nearest);
-  };
+    return { x, y };
+  }, [points]);
 
   const handleProjectQuery = async () => {
     if (!query.trim()) return;
 
     try {
       const result = await projectQuery(query);
-      setQueryPoint({ x: result.x, y: result.y });
+      setQueryProjection({ x: result.x, y: result.y });
     } catch (error) {
       console.error('Failed to project query:', error);
     }
   };
 
-  const handleDownloadAtlasData = async () => {
-    try {
-      const response = await fetch('/api/embeddings/atlas');
-      const data = await response.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'embeddings-atlas.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Failed to download atlas data:', error);
-    }
-  };
+  const selectedPoint = selection !== null ? points[selection] : null;
+  const hoveredPoint = tooltip !== null ? points[tooltip] : null;
 
   if (loading) {
     return (
@@ -231,54 +78,44 @@ const EmbeddingVisualization: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Embedding Visualization</h1>
-          <p className="text-gray-600">Explore document embeddings in 2D space (embedding-atlas compatible)</p>
+          <h1 className="text-2xl font-bold text-gray-800">Chunk Embeddings</h1>
+          <p className="text-gray-600">Visualize extracted document chunks using Apple Embedding Atlas</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleDownloadAtlasData}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-          >
-            <Download size={18} />
-            Export for Atlas
-          </button>
-          <button
-            onClick={fetchData}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <RefreshCw size={18} />
-            Refresh
-          </button>
-        </div>
+        <button
+          onClick={fetchData}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <RefreshCw size={18} />
+          Refresh
+        </button>
       </div>
 
       {/* Stats */}
-      {stats && (
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-sm text-gray-500">Total Embeddings</p>
-            <p className="text-2xl font-bold text-gray-800">{stats.total_embeddings}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-sm text-gray-500">Dimensions</p>
-            <p className="text-2xl font-bold text-gray-800">{stats.embedding_dimension}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-sm text-gray-500">Types</p>
-            <p className="text-2xl font-bold text-gray-800">{stats.types?.length || 0}</p>
-          </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-lg shadow p-4">
+          <p className="text-sm text-gray-500">Chunk Embeddings</p>
+          <p className="text-2xl font-bold text-gray-800">{points.length}</p>
         </div>
-      )}
+        <div className="bg-white rounded-lg shadow p-4">
+          <p className="text-sm text-gray-500">Dimensions</p>
+          <p className="text-2xl font-bold text-gray-800">{stats?.embedding_dimension || 1024}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <p className="text-sm text-gray-500">Total Embeddings</p>
+          <p className="text-2xl font-bold text-gray-800">{stats?.total_embeddings || 0}</p>
+        </div>
+      </div>
 
       {/* Query Projection */}
       <div className="bg-white rounded-lg shadow p-4">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Project Query</h3>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Search in Embedding Space</h3>
         <div className="flex gap-4">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Enter a query to project onto the embedding space..."
+            onKeyPress={(e) => e.key === 'Enter' && handleProjectQuery()}
+            placeholder="Enter a query to find similar chunks..."
             className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
           />
           <button
@@ -286,78 +123,96 @@ const EmbeddingVisualization: React.FC = () => {
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
           >
             <Search size={18} />
-            Project
+            Search
           </button>
         </div>
+        {queryProjection && (
+          <p className="mt-2 text-sm text-gray-500">
+            Query projected to: ({queryProjection.x.toFixed(3)}, {queryProjection.y.toFixed(3)})
+          </p>
+        )}
       </div>
 
-      {/* Filter */}
-      {config?.types && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">Filter by type:</span>
-          <button
-            onClick={() => setTypeFilter(null)}
-            className={`px-3 py-1 rounded text-sm ${
-              typeFilter === null ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            All
-          </button>
-          {config.types.map((type: string) => (
-            <button
-              key={type}
-              onClick={() => setTypeFilter(type)}
-              className={`px-3 py-1 rounded text-sm capitalize ${
-                typeFilter === type ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              {type}
-            </button>
-          ))}
+      {/* Embedding Atlas Visualization */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="p-4 border-b bg-gray-50">
+          <h3 className="font-semibold text-gray-800">Embedding Space (Apple Embedding Atlas)</h3>
+          <p className="text-sm text-gray-500">Click on points to select, hover to preview</p>
+        </div>
+        {points.length > 0 ? (
+          <div style={{ height: '600px', width: '100%' }}>
+            <EmbeddingView
+              x={atlasData.x}
+              y={atlasData.y}
+              width={1000}
+              height={600}
+              tooltip={tooltip}
+              onTooltip={setTooltip}
+              selection={selection}
+              onSelection={setSelection}
+              theme="light"
+              colorScheme="categorical"
+            />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-96 text-gray-500">
+            <div className="text-center">
+              <Layers className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <p>No chunk embeddings found</p>
+              <p className="text-sm">Upload and process PDF documents to generate embeddings</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Hovered Point Info */}
+      {hoveredPoint && (
+        <div className="bg-yellow-50 rounded-lg shadow p-4 border border-yellow-200">
+          <h3 className="font-semibold text-yellow-800 flex items-center gap-2">
+            <Layers className="w-5 h-5" />
+            Hovering
+          </h3>
+          <p className="mt-2 text-sm text-yellow-900 line-clamp-3">{hoveredPoint.text}</p>
         </div>
       )}
-
-      {/* Canvas */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <canvas
-          ref={canvasRef}
-          width={1000}
-          height={600}
-          onClick={handleCanvasClick}
-          className="w-full h-auto cursor-crosshair border rounded-lg"
-        />
-      </div>
 
       {/* Selected Point Info */}
       {selectedPoint && (
         <div className="bg-white rounded-lg shadow p-4">
           <h3 className="font-semibold text-gray-800 flex items-center gap-2">
             <Layers className="w-5 h-5" />
-            Selected Point
+            Selected Chunk
           </h3>
           <div className="mt-2 space-y-2">
-            <p className="text-sm"><span className="text-gray-500">Type:</span> {selectedPoint.type}</p>
-            <p className="text-sm"><span className="text-gray-500">Text:</span> {selectedPoint.text}</p>
-            <p className="text-sm"><span className="text-gray-500">Position:</span> ({selectedPoint.x?.toFixed(3)}, {selectedPoint.y?.toFixed(3)})</p>
+            <p className="text-sm">
+              <span className="text-gray-500">Position:</span> ({selectedPoint.x?.toFixed(3)}, {selectedPoint.y?.toFixed(3)})
+            </p>
+            <p className="text-sm">
+              <span className="text-gray-500">Document:</span> {selectedPoint.metadata?.doc_id || 'Unknown'}
+            </p>
+            <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500 mb-1">Content:</p>
+              <p className="text-sm text-gray-800 whitespace-pre-wrap">{selectedPoint.text}</p>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Atlas Integration Info */}
+      {/* Info */}
       <div className="bg-blue-50 rounded-lg p-4">
-        <h3 className="font-semibold text-blue-800 mb-2">Apple Embedding Atlas Integration</h3>
+        <h3 className="font-semibold text-blue-800 mb-2">About This Visualization</h3>
         <p className="text-sm text-blue-700">
-          Export your embeddings in a format compatible with Apple's embedding-atlas tool for advanced visualization.
-          Click "Export for Atlas" to download the data, then load it into embedding-atlas for interactive exploration.
+          This visualization shows extracted text chunks from your PDF documents projected into 2D space
+          using PCA. Similar chunks appear closer together. Powered by{' '}
+          <a
+            href="https://github.com/apple/embedding-atlas"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-blue-900"
+          >
+            Apple Embedding Atlas
+          </a>.
         </p>
-        <a
-          href="https://github.com/apple/embedding-atlas"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-blue-600 hover:underline mt-2 inline-block"
-        >
-          Learn more about embedding-atlas →
-        </a>
       </div>
     </div>
   );

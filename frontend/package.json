@@ -16,7 +16,8 @@
     "d3": "^7.8.5",
     "react-force-graph-2d": "^1.25.0",
     "@uiw/react-codemirror": "^4.21.21",
-    "lucide-react": "^0.303.0"
+    "lucide-react": "^0.303.0",
+    "embedding-atlas": "^0.15.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.47",
