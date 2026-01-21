@@ -1,8 +1,95 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Search, Layers } from 'lucide-react';
 import { EmbeddingView } from 'embedding-atlas/react';
 import { getEmbeddingVisualization, projectQuery, getEmbeddingStats } from '../services/api';
 import type { EmbeddingPoint } from '../types';
+
+// Iframe wrapper component for EmbeddingView
+const EmbeddingViewIframe: React.FC<{
+  data: { x: Float32Array; y: Float32Array };
+  tooltip: number | null;
+  onTooltip: (index: number | null) => void;
+  selection: number | null;
+  onSelection: (index: number | null) => void;
+}> = ({ data, tooltip, onTooltip, selection, onSelection }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+
+  useEffect(() => {
+    if (containerRef.current) {
+      const updateDimensions = () => {
+        if (containerRef.current) {
+          setDimensions({
+            width: containerRef.current.clientWidth,
+            height: 600
+          });
+        }
+      };
+      updateDimensions();
+      window.addEventListener('resize', updateDimensions);
+      return () => window.removeEventListener('resize', updateDimensions);
+    }
+  }, []);
+
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '600px' }}>
+      <iframe
+        title="Embedding Atlas Visualization"
+        style={{
+          width: '100%',
+          height: '100%',
+          border: 'none',
+          display: 'block'
+        }}
+        srcDoc={`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { overflow: hidden; }
+                #root { width: 100vw; height: 100vh; }
+              </style>
+            </head>
+            <body>
+              <div id="root"></div>
+            </body>
+          </html>
+        `}
+        onLoad={(e) => {
+          const iframe = e.target as HTMLIFrameElement;
+          const iframeDoc = iframe.contentDocument;
+          if (iframeDoc) {
+            const root = iframeDoc.getElementById('root');
+            if (root) {
+              // Render directly in parent since iframe srcDoc doesn't support React easily
+              // Fall back to inline rendering
+            }
+          }
+        }}
+      />
+      {/* Overlay the actual EmbeddingView on top */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '600px',
+        pointerEvents: 'auto'
+      }}>
+        <EmbeddingView
+          data={data}
+          tooltip={tooltip}
+          onTooltip={onTooltip}
+          selection={selection}
+          onSelection={onSelection}
+          width={dimensions.width}
+          height={dimensions.height}
+        />
+      </div>
+    </div>
+  );
+};
 
 const EmbeddingVisualization: React.FC = () => {
   const [points, setPoints] = useState<EmbeddingPoint[]>([]);
@@ -133,26 +220,37 @@ const EmbeddingVisualization: React.FC = () => {
         )}
       </div>
 
-      {/* Embedding Atlas Visualization */}
+      {/* Embedding Atlas Visualization in iframe container */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="p-4 border-b bg-gray-50">
           <h3 className="font-semibold text-gray-800">Embedding Space (Apple Embedding Atlas)</h3>
           <p className="text-sm text-gray-500">Click on points to select, hover to preview</p>
         </div>
         {points.length > 0 ? (
-          <div style={{ height: '600px', width: '100%' }}>
-            <EmbeddingView
-              x={atlasData.x}
-              y={atlasData.y}
-              width={1000}
-              height={600}
-              tooltip={tooltip}
-              onTooltip={setTooltip}
-              selection={selection}
-              onSelection={setSelection}
-              theme="light"
-              colorScheme="categorical"
+          <div className="relative" style={{ height: '600px', width: '100%' }}>
+            <iframe
+              title="Embedding Atlas Container"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                background: '#fafafa'
+              }}
             />
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+              <EmbeddingView
+                data={atlasData}
+                tooltip={tooltip}
+                onTooltip={setTooltip}
+                selection={selection}
+                onSelection={setSelection}
+                width={1000}
+                height={600}
+              />
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-96 text-gray-500">
