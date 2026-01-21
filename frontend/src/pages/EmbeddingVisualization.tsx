@@ -89,7 +89,7 @@ const EmbeddingVisualization: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <a
-            href="/atlas/"
+            href="/atlas/index.html"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
@@ -128,7 +128,7 @@ const EmbeddingVisualization: React.FC = () => {
         {points.length > 0 ? (
           <iframe
             ref={iframeRef}
-            src="/atlas/"
+            src="/atlas/index.html"
             title="Embedding Atlas Visualization"
             onLoad={handleIframeLoad}
             style={{
