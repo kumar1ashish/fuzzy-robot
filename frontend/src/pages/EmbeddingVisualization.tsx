@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { RefreshCw, Layers } from 'lucide-react';
-import { EmbeddingAtlas } from 'embedding-atlas/react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { RefreshCw, Layers, ExternalLink } from 'lucide-react';
 import { getEmbeddingVisualization, getEmbeddingStats } from '../services/api';
 import type { EmbeddingPoint } from '../types';
 
@@ -8,6 +7,7 @@ const EmbeddingVisualization: React.FC = () => {
   const [points, setPoints] = useState<EmbeddingPoint[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -45,6 +45,33 @@ const EmbeddingVisualization: React.FC = () => {
     }));
   }, [points]);
 
+  // Send data to iframe when it's ready
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'ATLAS_READY' && iframeRef.current) {
+        iframeRef.current.contentWindow?.postMessage({
+          type: 'EMBEDDING_DATA',
+          payload: tableData
+        }, '*');
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [tableData]);
+
+  // Send data when iframe loads
+  const handleIframeLoad = () => {
+    if (iframeRef.current && tableData.length > 0) {
+      setTimeout(() => {
+        iframeRef.current?.contentWindow?.postMessage({
+          type: 'EMBEDDING_DATA',
+          payload: tableData
+        }, '*');
+      }, 1000);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -60,13 +87,24 @@ const EmbeddingVisualization: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-800">Chunk Embeddings</h1>
           <p className="text-gray-600">Visualize extracted document chunks using Apple Embedding Atlas</p>
         </div>
-        <button
-          onClick={fetchData}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <RefreshCw size={18} />
-          Refresh
-        </button>
+        <div className="flex gap-2">
+          <a
+            href="/atlas/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+          >
+            <ExternalLink size={18} />
+            Open Fullscreen
+          </a>
+          <button
+            onClick={fetchData}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <RefreshCw size={18} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -85,19 +123,20 @@ const EmbeddingVisualization: React.FC = () => {
         </div>
       </div>
 
-      {/* Embedding Atlas Full Visualization */}
+      {/* Embedding Atlas in iframe */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        {points.length > 0 && tableData.length > 0 ? (
-          <div style={{ height: '800px', width: '100%' }}>
-            <EmbeddingAtlas
-              data={tableData}
-              x="x"
-              y="y"
-              category="doc_id"
-              text="text"
-              identifier="id"
-            />
-          </div>
+        {points.length > 0 ? (
+          <iframe
+            ref={iframeRef}
+            src="/atlas/"
+            title="Embedding Atlas Visualization"
+            onLoad={handleIframeLoad}
+            style={{
+              width: '100%',
+              height: '800px',
+              border: 'none'
+            }}
+          />
         ) : (
           <div className="flex items-center justify-center h-96 text-gray-500">
             <div className="text-center">

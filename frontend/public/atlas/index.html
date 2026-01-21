@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embedding Atlas Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    #root { width: 100%; height: 100%; }
+    #loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #666;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #3498db;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 12px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div id="loading">
+      <div class="spinner"></div>
+      <span>Loading Embedding Atlas...</span>
+    </div>
+  </div>
+
+  <script type="module">
+    import React, { useState, useEffect } from 'https://esm.sh/react@18.2.0';
+    import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+    import { EmbeddingAtlas } from 'https://esm.sh/embedding-atlas@0.15.0/react';
+
+    const App = () => {
+      const [data, setData] = useState(null);
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        // Listen for data from parent window
+        const handleMessage = (event) => {
+          if (event.data && event.data.type === 'EMBEDDING_DATA') {
+            console.log('Received embedding data:', event.data.payload.length, 'points');
+            setData(event.data.payload);
+          }
+        };
+
+        window.addEventListener('message', handleMessage);
+
+        // Request data from parent
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'ATLAS_READY' }, '*');
+        }
+
+        // Also try to fetch from API directly
+        fetch('/api/embeddings/visualization?max_points=2000')
+          .then(res => res.json())
+          .then(vizData => {
+            if (vizData.points && vizData.points.length > 0) {
+              const tableData = vizData.points
+                .filter(p => p.type === 'chunk')
+                .map((point, index) => ({
+                  id: point.id || `chunk_${index}`,
+                  x: point.x ?? 0,
+                  y: point.y ?? 0,
+                  text: point.text || '',
+                  doc_id: point.metadata?.doc_id || 'unknown',
+                  type: point.type || 'chunk'
+                }));
+              if (tableData.length > 0) {
+                setData(tableData);
+              }
+            }
+          })
+          .catch(err => {
+            console.log('Could not fetch from API, waiting for parent data');
+          });
+
+        return () => window.removeEventListener('message', handleMessage);
+      }, []);
+
+      if (error) {
+        return React.createElement('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            color: '#e74c3c',
+            fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif'
+          }
+        }, `Error: ${error}`);
+      }
+
+      if (!data || data.length === 0) {
+        return React.createElement('div', {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            color: '#666',
+            fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif'
+          }
+        }, [
+          React.createElement('div', { key: 'spinner', className: 'spinner' }),
+          React.createElement('p', { key: 'text', style: { marginTop: '12px' } },
+            'Waiting for embedding data...')
+        ]);
+      }
+
+      return React.createElement(EmbeddingAtlas, {
+        data: data,
+        x: 'x',
+        y: 'y',
+        category: 'doc_id',
+        text: 'text',
+        identifier: 'id'
+      });
+    };
+
+    // Remove loading indicator and mount React app
+    document.getElementById('loading').remove();
+    const root = createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>
